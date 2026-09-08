@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Texas Hold'em Poker</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#101318;color:#f4f4f4;font-family:Arial,sans-serif;display:flex;justify-content:center;min-height:100vh}
+#app{width:min(1100px,100%);padding:18px}
+h1{text-align:center;margin:4px 0 14px;font-size:28px}
+#table{background:radial-gradient(circle,#157044,#07502f 65%,#063b24);border:12px solid #51331e;border-radius:38%;min-height:650px;position:relative;box-shadow:0 15px 45px #0008;padding:20px}
+.seat{position:absolute;text-align:center;min-width:130px}
+.name{font-weight:bold;margin-bottom:5px}
+.stack{font-size:14px;color:#ddd}
+#dealer{top:42%;left:48%;font-size:13px;color:#fff8}
+.cards{display:flex;gap:5px;justify-content:center;min-height:88px}
+.card{width:54px;height:78px;background:#fff;border-radius:6px;color:#111;display:flex;align-items:center;justify-content:center;font-size:29px;font-weight:bold;box-shadow:0 2px 5px #0007}
+.red{color:#d71920}
+.back{background:repeating-linear-gradient(45deg,#234b91,#234b91 6px,#fff 6px,#fff 8px);color:transparent}
+#p1{bottom:22px;left:50%;transform:translateX(-50%)}
+#p2{top:32px;left:50%;transform:translateX(-50%)}
+#p3{top:46%;left:22px}
+#p4{top:46%;right:22px}
+#community{position:absolute;top:43%;left:50%;transform:translate(-50%,-50%);text-align:center}
+#pot{font-size:17px;margin-bottom:8px;font-weight:bold}
+#message{margin-top:9px;min-height:22px;color:#ffe08a}
+#controls{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-top:15px}
+button{border:0;border-radius:8px;padding:11px 18px;font-weight:bold;cursor:pointer;background:#eee;color:#111}
+button:hover{filter:brightness(1.08)}
+button:disabled{opacity:.35;cursor:not-allowed}
+.primary{background:#f0b90b}
+.danger{background:#c93b3b;color:white}
+#new{display:block;margin:0 auto 12px;background:#eee}
+#rules{margin-top:18px;background:#181c22;border-radius:12px;padding:14px;color:#ccc;font-size:13px;line-height:1.5}
+@media(max-width:700px){
+ #table{min-height:570px;border-width:8px}
+ .seat{min-width:100px}.card{width:43px;height:64px;font-size:23px}
+ #p3{left:0}#p4{right:0}
+}
+</style>
+</head>
+<body>
+<div id="app">
+<h1>♠ Texas Hold'em Poker</h1>
+<button id="new" onclick="startGame()">새 게임</button>
+<div id="table">
+  <div id="p2" class="seat"><div class="name">🤖 CPU</div><div class="cards" id="cpuCards"></div><div class="stack" id="cpuStack"></div></div>
+  <div id="p3" class="seat"><div class="name">🤖 CPU 2</div><div class="cards" id="cpu2Cards"></div><div class="stack" id="cpu2Stack"></div></div>
+  <div id="p4" class="seat"><div class="name">🤖 CPU 3</div><div class="cards" id="cpu3Cards"></div><div class="stack" id="cpu3Stack"></div></div>
+  <div id="p1" class="seat"><div class="name">🙂 나</div><div class="cards" id="playerCards"></div><div class="stack" id="playerStack"></div></div>
+  <div id="community"><div id="pot">Pot: 0</div><div class="cards" id="communityCards"></div><div id="message"></div></div>
+</div>
+<div id="controls">
+ <button id="fold" class="danger" onclick="fold()">폴드</button>
+ <button id="check" onclick="check()">체크</button>
+ <button id="call" onclick="callBet()">콜</button>
+ <button id="raise" class="primary" onclick="raiseBet()">레이즈 (+20)</button>
+</div>
+<div id="rules">
+<strong>간단한 텍사스 홀덤</strong><br>
+각 플레이어는 2장의 개인 카드를 받고, 테이블 중앙에 최대 5장의 커뮤니티 카드가 공개됩니다.
+내 카드 2장과 커뮤니티 카드 중 가장 좋은 5장으로 족보를 만들어 승부합니다.
+이 버전은 브라우저에서 바로 플레이할 수 있는 간단한 4인 CPU 대전 데모입니다.
+</div>
+</div>
+
+<script>
+const suits=['♠','♥','♦','♣'], ranks=['2','3','4','5','6','7','8','9','10','J','Q','K','A'];
+let deck, player, cpus, board, pot, currentBet, phase, folded;
+
+function cardText(c){return c.rank+c.suit}
+function makeDeck(){
+ deck=[];
+ for(const s of suits) for(const r of ranks) deck.push({suit:s,rank:r});
+ for(let i=deck.length-1;i>0;i--){let j=Math.floor(Math.random()*(i+1));[deck[i],deck[j]]=[deck[j],deck[i]]}
+}
+function draw(){return deck.pop()}
+function startGame(){
+ makeDeck(); player={cards:[draw(),draw()],stack:1000,bet:0};
+ cpus=[{cards:[draw(),draw()],stack:1000,bet:0},{cards:[draw(),draw()],stack:1000,bet:0},{cards:[draw(),draw()],stack:1000,bet:0}];
+ board=[];pot=0;currentBet=0;phase='preflop';folded=false;
+ render(); msg('당신의 차례입니다. 체크 또는 레이즈를 선택하세요.');
+}
+function renderCards(id,cards,hide=false){
+ const el=document.getElementById(id);el.innerHTML='';
+ cards.forEach(c=>{
+  const d=document.createElement('div');d.className='card '+((c.suit==='♥'||c.suit==='♦')?'red':'');
+  if(hide)d.className='card back'; else d.textContent=cardText(c);
+  el.appendChild(d);
+ });
+}
+function render(){
+ renderCards('playerCards',player.cards);
+ renderCards('cpuCards',cpus[0].cards,true);renderCards('cpu2Cards',cpus[1].cards,true);renderCards('cpu3Cards',cpus[2].cards,true);
+ renderCards('communityCards',board);
+ document.getElementById('playerStack').textContent='칩: '+player.stack;
+ cpus.forEach((c,i)=>document.getElementById(['cpuStack','cpu2Stack','cpu3Stack'][i]).textContent='칩: '+c.stack);
+ document.getElementById('pot').textContent='Pot: '+pot;
+}
+function msg(x){document.getElementById('message').textContent=x}
+function bet(p,n){n=Math.min(n,p.stack);p.stack-=n;p.bet+=n;pot+=n}
+function resetBets(){player.bet=0;cpus.forEach(c=>c.bet=0);currentBet=0}
+function check(){
+ if(currentBet>player.bet){msg('현재 베팅이 '+(currentBet-player.bet)+'칩입니다. 콜하거나 레이즈하세요.');return}
+ cpuActions(); advance();
+}
+function callBet(){
+ let n=currentBet-player.bet;if(n>player.stack)n=player.stack;
+ bet(player,n);cpuActions();advance();
+}
+function raiseBet(){
+ let target=currentBet+20, n=target-player.bet;
+ if(n>player.stack){msg('칩이 부족합니다.');return}
+ bet(player,n);currentBet=target;cpuActions();advance();
+}
+function fold(){folded=true;cpus.forEach(c=>c.folded=false);msg('폴드했습니다. CPU가 승리했습니다.');disable(true)}
+function cpuActions(){
+ cpus.forEach(c=>{
+  if(c.stack<=0)return;
+  let strength=Math.random();
+  if(strength<.18)c.folded=true;
+  else{
+   c.folded=false;
+   if(currentBet>c.bet)bet(c,Math.min(currentBet-c.bet,c.stack));
+   if(Math.random()<.25 && c.stack>20){bet(c,Math.min(20,c.stack));currentBet=Math.max(currentBet,c.bet)}
+  }
+ });
+}
+function advance(){
+ render();
+ if(cpus.filter(c=>!c.folded).length===0){msg('모든 CPU가 폴드했습니다! 당신의 승리!');disable(true);return}
+ setTimeout(()=>{
+  if(phase==='preflop'){board.push(draw(),draw(),draw());phase='flop';}
+  else if(phase==='flop'){board.push(draw());phase='turn';}
+  else if(phase==='turn'){board.push(draw());phase='river';}
+  else {showdown();return}
+  resetBets();render();msg(phase.toUpperCase()+' — 당신의 차례입니다.');
+ },450);
+}
+function disable(v){
+ ['fold','check','call','raise'].forEach(id=>document.getElementById(id).disabled=v);
+}
+function showdown(){
+ cpus.forEach(c=>{if(!c.folded){renderCards(['cpuCards','cpu2Cards','cpu3Cards'][cpus.indexOf(c)],c.cards)}});
+ render();let alive=cpus.filter(c=>!c.folded);
+ let all=[{name:'당신',cards:player.cards,hand:evaluate([...player.cards,...board])},...alive.map((c,i)=>({name:'CPU'+(i+1),cards:c.cards,hand:evaluate([...c.cards,...board])}))];
+ all.sort((a,b)=>compare(b.hand,a.hand));
+ let best=all[0], tied=all.filter(x=>compare(x.hand,best.hand)===0);
+ let share=Math.floor(pot/tied.length);
+ if(tied.some(x=>x.name==='당신')) player.stack+=share;
+ msg((tied.length>1?tied.map(x=>x.name).join(', ')+' 무승부!':best.name+' 승리!')+' — '+best.hand.name);
+ disable(true);
+}
+function evaluate(cs){
+ let vals=cs.map(c=>ranks.indexOf(c.rank)+2).sort((a,b)=>b-a), counts={};
+ vals.forEach(v=>counts[v]=(counts[v]||0)+1);
+ let flush=suits.some(s=>cs.filter(c=>c.suit===s).length>=5);
+ let uniq=[...new Set(vals)].sort((a,b)=>b-a);if(uniq.includes(14))uniq.push(1);
+ let straight=0;for(let i=0;i<=uniq.length-5;i++)if(uniq[i]-uniq[i+4]===4){straight=uniq[i];break}
+ if(flush&&straight)return {r:8,name:'스트레이트 플러시',v:[straight]};
+ let groups=Object.entries(counts).map(([v,n])=>[+v,n]).sort((a,b)=>b[1]-a[1]||b[0]-a[0]);
+ if(groups[0][1]===4)return {r:7,name:'포카드',v:[groups[0][0],groups[1][0]]};
+ if(groups[0][1]>=3&&groups.slice(1).some(x=>x[1]>=2))return {r:6,name:'풀하우스',v:[groups[0][0],groups.find(x=>x[1]>=2&&x[0]!==groups[0][0])[0]]};
+ if(flush)return {r:5,name:'플러시',v:vals.slice(0,5)};
+ if(straight)return {r:4,name:'스트레이트',v:[straight]};
+ if(groups[0][1]===3)return {r:3,name:'트리플',v:[groups[0][0],...vals.filter(x=>x!==groups[0][0]).slice(0,2)]};
+ let pairs=groups.filter(x=>x[1]>=2);
+ if(pairs.length>=2)return {r:2,name:'투페어',v:[pairs[0][0],pairs[1][0],...vals.filter(x=>x!==pairs[0][0]&&x!==pairs[1][0]).slice(0,1)]};
+ if(pairs.length===1)return {r:1,name:'원페어',v:[pairs[0][0],...vals.filter(x=>x!==pairs[0][0]).slice(0,3)]};
+ return {r:0,name:'하이카드',v:vals.slice(0,5)};
+}
+function compare(a,b){
+ if(a.r!==b.r)return a.r-b.r;
+ for(let i=0;i<Math.max(a.v.length,b.v.length);i++){let x=a.v[i]||0,y=b.v[i]||0;if(x!==y)return x-y}
+ return 0;
+}
+startGame();
+</script>
+</body>
+</html>
